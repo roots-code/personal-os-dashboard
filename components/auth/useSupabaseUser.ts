@@ -11,8 +11,29 @@ type SupabaseUser = {
 export function useSupabaseUser() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
+    const syncProfile = async (authUser: { id: string; email?: string | null }) => {
+      const { error: profileError } = await supabase.from("users").upsert(
+        {
+          id: authUser.id,
+          display_name: authUser.email ?? null
+        },
+        { onConflict: "id" }
+      );
+
+      if (!mounted) return;
+      setUser({ id: authUser.id, email: authUser.email ?? undefined });
+      setError(
+        profileError
+          ? `Could not finish account setup: ${profileError.message}`
+          : null
+      );
+    };
+
     const load = async () => {
       setLoading(true);
       const {
@@ -20,28 +41,49 @@ export function useSupabaseUser() {
         error
       } = await supabase.auth.getUser();
 
-      if (!error && user) {
-        setUser({ id: user.id, email: user.email ?? undefined });
+      if (!mounted) return;
 
-        // Ensure a corresponding row exists in public.users for FKs.
-        void supabase
-          .from("users")
-          .upsert(
-            {
-              id: user.id,
-              display_name: user.email ?? null
-            },
-            { onConflict: "id" }
-          );
+      if (error) {
+        setUser(null);
+        setError(error.message);
+      } else if (user) {
+        await syncProfile(user);
       } else {
         setUser(null);
+        setError(null);
       }
+
+      if (!mounted) return;
       setLoading(false);
     };
 
-    load();
+    void load();
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        if (!mounted) return;
+        setUser(null);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
+      void (async () => {
+        if (!mounted) return;
+        setLoading(true);
+        await syncProfile(session.user);
+        if (!mounted) return;
+        setLoading(false);
+      })();
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
-  return { user, loading };
+  return { user, loading, error };
 }
-

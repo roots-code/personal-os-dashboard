@@ -14,17 +14,19 @@ type HabitRow = {
 const HABIT_NAMES = ["Gym", "Deep Work", "Reading", "Intermittent Fasting"];
 
 export function HabitChecklist() {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user, loading: userLoading, error: userError } = useSupabaseUser();
   const [date, setDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10)
   );
   const [items, setItems] = useState<Record<string, HabitRow | null>>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
       setLoading(true);
+      setError(null);
       const { data, error } = await supabase
         .from("habits")
         .select("*")
@@ -37,6 +39,8 @@ export function HabitChecklist() {
             (data as HabitRow[]).find((h) => h.habit_name === name) ?? null;
         });
         setItems(byName);
+      } else if (error) {
+        setError(`Could not load habits: ${error.message}`);
       }
       setLoading(false);
     };
@@ -45,17 +49,22 @@ export function HabitChecklist() {
 
   const toggleHabit = async (habitName: string) => {
     if (!user) return;
+    setError(null);
     const existing = items[habitName];
     if (existing) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("habits")
         .update({ completed: !existing.completed })
         .eq("id", existing.id)
         .select()
         .single();
+      if (error) {
+        setError(`Could not update habit: ${error.message}`);
+        return;
+      }
       setItems((prev) => ({ ...prev, [habitName]: data as HabitRow }));
     } else {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("habits")
         .insert({
           user_id: user.id,
@@ -65,6 +74,10 @@ export function HabitChecklist() {
         })
         .select()
         .single();
+      if (error) {
+        setError(`Could not create habit entry: ${error.message}`);
+        return;
+      }
       setItems((prev) => ({ ...prev, [habitName]: data as HabitRow }));
     }
   };
@@ -104,6 +117,9 @@ export function HabitChecklist() {
           </p>
         </div>
       </div>
+      {(userError || error) && (
+        <p className="text-xs text-red-400">{userError ?? error}</p>
+      )}
       {loading ? (
         <p className="text-xs text-slate-400">Loading habits…</p>
       ) : (
@@ -141,4 +157,3 @@ export function HabitChecklist() {
     </div>
   );
 }
-

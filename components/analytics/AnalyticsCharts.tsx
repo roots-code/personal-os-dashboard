@@ -22,17 +22,26 @@ type Aggregates = {
 };
 
 export function AnalyticsCharts() {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user, loading: userLoading, error: userError } = useSupabaseUser();
   const [agg, setAgg] = useState<Aggregates | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
+      setLoading(true);
+      setError(null);
       const today = new Date();
       const past30 = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
       const past30Iso = past30.toISOString();
+      const past30Date = past30Iso.slice(0, 10);
 
-      const [{ data: tasks }, { data: workouts }, { data: habits }] =
+      const [
+        { data: tasks, error: tasksError },
+        { data: workouts, error: workoutsError },
+        { data: habits, error: habitsError }
+      ] =
         await Promise.all([
           supabase
             .from("tasks")
@@ -43,13 +52,24 @@ export function AnalyticsCharts() {
             .from("workouts")
             .select("workout_date")
             .eq("user_id", user.id)
-            .gte("workout_date", past30Iso),
+            .gte("workout_date", past30Date),
           supabase
             .from("habits")
             .select("habit_name, date, completed")
             .eq("user_id", user.id)
-            .gte("date", past30Iso)
+            .gte("date", past30Date)
         ]);
+
+      if (tasksError || workoutsError || habitsError) {
+        setError(
+          tasksError?.message ??
+            workoutsError?.message ??
+            habitsError?.message ??
+            "Unknown analytics error"
+        );
+        setLoading(false);
+        return;
+      }
 
       const tasksPerDay: Record<string, number> = {};
       (tasks ?? []).forEach((t: any) => {
@@ -81,6 +101,7 @@ export function AnalyticsCharts() {
       });
 
       setAgg({ tasksPerDay, workoutsPerWeek, habitsCompletion });
+      setLoading(false);
     };
     void load();
   }, [user]);
@@ -97,7 +118,11 @@ export function AnalyticsCharts() {
     );
   }
 
-  if (!agg) {
+  if (userError || error) {
+    return <p className="text-xs text-red-400">{userError ?? error}</p>;
+  }
+
+  if (loading || !agg) {
     return <p className="text-xs text-slate-400">Loading analytics…</p>;
   }
 
@@ -209,4 +234,3 @@ export function AnalyticsCharts() {
     </div>
   );
 }
-

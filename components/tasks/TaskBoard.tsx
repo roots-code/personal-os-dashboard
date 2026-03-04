@@ -28,17 +28,19 @@ const COLUMNS: Column[] = [
 ];
 
 export function TaskBoard() {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user, loading: userLoading, error: userError } = useSupabaseUser();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
       setLoading(true);
+      setError(null);
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
@@ -46,6 +48,8 @@ export function TaskBoard() {
         .order("created_at", { ascending: false });
       if (!error && data) {
         setTasks(data as Task[]);
+      } else if (error) {
+        setError(`Could not load tasks: ${error.message}`);
       }
       setLoading(false);
     };
@@ -54,6 +58,7 @@ export function TaskBoard() {
 
   const handleCreateTask = async () => {
     if (!user || !title.trim()) return;
+    setError(null);
     const { data, error } = await supabase
       .from("tasks")
       .insert({
@@ -69,15 +74,26 @@ export function TaskBoard() {
       setTasks((prev) => [data as Task, ...prev]);
       setTitle("");
       setDescription("");
+    } else if (error) {
+      setError(`Could not create task: ${error.message}`);
     }
   };
 
   const handleDrop = async (taskId: string, newStatus: TaskStatus) => {
+    const previous = tasks;
     setDraggingId(null);
+    setError(null);
     setTasks((prev) =>
       prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
     );
-    await supabase.from("tasks").update({ status: newStatus }).eq("id", taskId);
+    const { error } = await supabase
+      .from("tasks")
+      .update({ status: newStatus })
+      .eq("id", taskId);
+    if (error) {
+      setTasks(previous);
+      setError(`Could not update task status: ${error.message}`);
+    }
   };
 
   const grouped: Record<TaskStatus, Task[]> = {
@@ -127,6 +143,9 @@ export function TaskBoard() {
           Add task
         </button>
       </div>
+      {(userError || error) && (
+        <p className="text-xs text-red-400">{userError ?? error}</p>
+      )}
 
       {loading ? (
         <p className="text-xs text-slate-400">Loading tasks…</p>
@@ -219,4 +238,3 @@ function Column({
     </div>
   );
 }
-

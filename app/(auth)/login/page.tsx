@@ -1,13 +1,23 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseUser } from "@/components/auth/useSupabaseUser";
 
 export default function LoginPage() {
+  const { user, loading: userLoading, error: userError } = useSupabaseUser();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      router.replace("/dashboard");
+    }
+  }, [router, user]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,6 +55,8 @@ export default function LoginPage() {
               placeholder="you@example.com"
             />
           </div>
+          {userLoading && <p className="text-xs text-slate-400">Checking session...</p>}
+          {userError && <p className="text-xs text-red-400">{userError}</p>}
           {error && <p className="text-xs text-red-400">{error}</p>}
           {message && <p className="text-xs text-emerald-400">{message}</p>}
           <button
@@ -59,4 +71,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

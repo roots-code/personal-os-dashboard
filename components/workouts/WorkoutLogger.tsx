@@ -47,18 +47,20 @@ const TEMPLATES: Record<
 };
 
 export function WorkoutLogger() {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user, loading: userLoading, error: userError } = useSupabaseUser();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [date, setDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10)
   );
   const [template, setTemplate] = useState<TemplateKey>("push");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
       setLoading(true);
+      setError(null);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
         .toISOString()
         .slice(0, 10);
@@ -69,6 +71,7 @@ export function WorkoutLogger() {
         .gte("workout_date", sevenDaysAgo)
         .order("workout_date", { ascending: false });
       if (!error && data) setWorkouts(data as Workout[]);
+      if (error) setError(`Could not load workouts: ${error.message}`);
       setLoading(false);
     };
     void load();
@@ -76,6 +79,7 @@ export function WorkoutLogger() {
 
   const handleAddTemplate = async () => {
     if (!user) return;
+    setError(null);
     const items = TEMPLATES[template].exercises.map((ex) => ({
       user_id: user.id,
       workout_date: date,
@@ -90,6 +94,8 @@ export function WorkoutLogger() {
       .select();
     if (!error && data) {
       setWorkouts((prev) => [...(data as Workout[]), ...prev]);
+    } else if (error) {
+      setError(`Could not add workout template: ${error.message}`);
     }
   };
 
@@ -141,6 +147,9 @@ export function WorkoutLogger() {
         >
           Add template to log
         </button>
+        {(userError || error) && (
+          <p className="text-xs text-red-400">{userError ?? error}</p>
+        )}
         <p className="text-[11px] text-slate-500 mt-1">
           Templates add a set of pre-defined exercises you can progressively overload over time.
         </p>
@@ -173,4 +182,3 @@ export function WorkoutLogger() {
     </div>
   );
 }
-

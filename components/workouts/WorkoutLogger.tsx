@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseUser } from "@/components/auth/useSupabaseUser";
 
 type Workout = {
   id: string;
@@ -46,6 +47,7 @@ const TEMPLATES: Record<
 };
 
 export function WorkoutLogger() {
+  const { user, loading: userLoading } = useSupabaseUser();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [date, setDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10)
@@ -54,21 +56,28 @@ export function WorkoutLogger() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
     const load = async () => {
       setLoading(true);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
       const { data, error } = await supabase
         .from("workouts")
         .select("*")
-        .gte("workout_date", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .eq("user_id", user.id)
+        .gte("workout_date", sevenDaysAgo)
         .order("workout_date", { ascending: false });
       if (!error && data) setWorkouts(data as Workout[]);
       setLoading(false);
     };
-    load();
-  }, []);
+    void load();
+  }, [user]);
 
   const handleAddTemplate = async () => {
+    if (!user) return;
     const items = TEMPLATES[template].exercises.map((ex) => ({
+      user_id: user.id,
       workout_date: date,
       exercise_name: ex.exercise_name,
       muscle_group: ex.muscle_group,
@@ -88,6 +97,18 @@ export function WorkoutLogger() {
     acc[w.workout_date] = (acc[w.workout_date] || 0) + 1;
     return acc;
   }, {});
+
+  if (userLoading) {
+    return <p className="text-xs text-slate-400">Loading your workouts…</p>;
+  }
+
+  if (!user) {
+    return (
+      <p className="text-xs text-slate-400">
+        You need to be logged in to log workouts.
+      </p>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

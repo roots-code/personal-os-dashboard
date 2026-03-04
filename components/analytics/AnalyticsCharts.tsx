@@ -11,6 +11,7 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseUser } from "@/components/auth/useSupabaseUser";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
 
@@ -21,9 +22,11 @@ type Aggregates = {
 };
 
 export function AnalyticsCharts() {
+  const { user, loading: userLoading } = useSupabaseUser();
   const [agg, setAgg] = useState<Aggregates | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     const load = async () => {
       const today = new Date();
       const past30 = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -34,14 +37,17 @@ export function AnalyticsCharts() {
           supabase
             .from("tasks")
             .select("created_at, status")
+            .eq("user_id", user.id)
             .gte("created_at", past30Iso),
           supabase
             .from("workouts")
             .select("workout_date")
+            .eq("user_id", user.id)
             .gte("workout_date", past30Iso),
           supabase
             .from("habits")
             .select("habit_name, date, completed")
+            .eq("user_id", user.id)
             .gte("date", past30Iso)
         ]);
 
@@ -76,8 +82,20 @@ export function AnalyticsCharts() {
 
       setAgg({ tasksPerDay, workoutsPerWeek, habitsCompletion });
     };
-    load();
-  }, []);
+    void load();
+  }, [user]);
+
+  if (userLoading) {
+    return <p className="text-xs text-slate-400">Loading your analytics…</p>;
+  }
+
+  if (!user) {
+    return (
+      <p className="text-xs text-slate-400">
+        You need to be logged in to view analytics.
+      </p>
+    );
+  }
 
   if (!agg) {
     return <p className="text-xs text-slate-400">Loading analytics…</p>;

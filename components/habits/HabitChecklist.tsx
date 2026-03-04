@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseUser } from "@/components/auth/useSupabaseUser";
 
 type HabitRow = {
   id: string;
@@ -13,6 +14,7 @@ type HabitRow = {
 const HABIT_NAMES = ["Gym", "Deep Work", "Reading", "Intermittent Fasting"];
 
 export function HabitChecklist() {
+  const { user, loading: userLoading } = useSupabaseUser();
   const [date, setDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10)
   );
@@ -20,11 +22,13 @@ export function HabitChecklist() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!user) return;
     const load = async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from("habits")
         .select("*")
+        .eq("user_id", user.id)
         .eq("date", date);
       if (!error && data) {
         const byName: Record<string, HabitRow | null> = {};
@@ -36,10 +40,11 @@ export function HabitChecklist() {
       }
       setLoading(false);
     };
-    load();
-  }, [date]);
+    void load();
+  }, [date, user]);
 
   const toggleHabit = async (habitName: string) => {
+    if (!user) return;
     const existing = items[habitName];
     if (existing) {
       const { data } = await supabase
@@ -52,7 +57,12 @@ export function HabitChecklist() {
     } else {
       const { data } = await supabase
         .from("habits")
-        .insert({ habit_name: habitName, date, completed: true })
+        .insert({
+          user_id: user.id,
+          habit_name: habitName,
+          date,
+          completed: true
+        })
         .select()
         .single();
       setItems((prev) => ({ ...prev, [habitName]: data as HabitRow }));
@@ -62,6 +72,18 @@ export function HabitChecklist() {
   const completedCount = HABIT_NAMES.filter(
     (name) => items[name]?.completed
   ).length;
+
+  if (userLoading) {
+    return <p className="text-xs text-slate-400">Loading your habits…</p>;
+  }
+
+  if (!user) {
+    return (
+      <p className="text-xs text-slate-400">
+        You need to be logged in to track habits.
+      </p>
+    );
+  }
 
   return (
     <div className="glass-panel p-4 space-y-3">

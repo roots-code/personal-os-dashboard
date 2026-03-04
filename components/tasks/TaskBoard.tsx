@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useSupabaseUser } from "@/components/auth/useSupabaseUser";
 
 type TaskStatus = "todo" | "in_progress" | "done";
 
@@ -27,6 +28,7 @@ const COLUMNS: Column[] = [
 ];
 
 export function TaskBoard() {
+  const { user, loading: userLoading } = useSupabaseUser();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -34,25 +36,28 @@ export function TaskBoard() {
   const [description, setDescription] = useState("");
 
   useEffect(() => {
+    if (!user) return;
     const load = async () => {
       setLoading(true);
       const { data, error } = await supabase
         .from("tasks")
         .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (!error && data) {
         setTasks(data as Task[]);
       }
       setLoading(false);
     };
-    load();
-  }, []);
+    void load();
+  }, [user]);
 
   const handleCreateTask = async () => {
-    if (!title.trim()) return;
+    if (!user || !title.trim()) return;
     const { data, error } = await supabase
       .from("tasks")
       .insert({
+        user_id: user.id,
         title,
         description,
         status: "todo",
@@ -81,6 +86,18 @@ export function TaskBoard() {
     done: []
   };
   tasks.forEach((task) => grouped[task.status].push(task));
+
+  if (userLoading) {
+    return <p className="text-xs text-slate-400">Loading your tasks…</p>;
+  }
+
+  if (!user) {
+    return (
+      <p className="text-xs text-slate-400">
+        You need to be logged in to manage tasks.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-4">
